@@ -31,7 +31,7 @@ Project Index creates a **minimal, always-updated summary** of your entire codeb
 
 ```bash
 # Install globally
-git clone <this-repo>
+git clone https://github.com/4xguy/project-index.git
 cd project-index
 ./install.sh   # Automatically installs TypeScript if needed
 
@@ -46,7 +46,7 @@ project-index-init
 
 ```bash
 # In your project directory
-git clone <this-repo> .project-index
+git clone https://github.com/4xguy/project-index.git .project-index
 cd .project-index
 npm install && npm run build
 
@@ -351,7 +351,7 @@ We welcome contributions! Areas needing help:
 ### Development Setup
 
 ```bash
-git clone <this-repo>
+git clone https://github.com/4xguy/project-index.git
 cd project-index
 npm install
 npm run dev
