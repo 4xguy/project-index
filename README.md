@@ -179,13 +179,15 @@ When initialized, your project gets:
 ```
 your-project/
 ├── .claude/
-│   ├── settings.json          # Hook configuration
-│   └── hooks/
-│       ├── indexer.sh         # Background indexer
-│       └── load-index.sh      # Session startup
+│   └── settings.json          # Local permissions only
 ├── .context/.project/
 │   └── PROJECT_INDEX.json     # The magic file 🎯
 └── .indexer.log              # Watcher logs
+
+# Global hooks (installed once, work everywhere)
+/home/keith/.claude/hooks/
+├── indexer.sh                 # Background indexer  
+└── load-index.sh             # Session startup
 ```
 
 ## ⚙️ Configuration
@@ -232,9 +234,9 @@ your-project/
 }
 ```
 
-### Customization
+### Global Configuration (v1.2+)
 
-Edit your project's `.claude/settings.json`:
+Hooks are now installed globally in `~/.claude/settings.json`:
 
 ```json
 {
@@ -244,11 +246,11 @@ Edit your project's `.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/indexer.sh start"
+            "command": "$HOME/.claude/hooks/indexer.sh start"
           },
           {
             "type": "command", 
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/load-index.sh"
+            "command": "$HOME/.claude/hooks/load-index.sh"
           }
         ]
       }
@@ -259,11 +261,22 @@ Edit your project's `.claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/indexer.sh update"
+            "command": "$HOME/.claude/hooks/indexer.sh update"
           }
         ]
       }
     ]
+  }
+}
+```
+
+**Project-local settings** (`project/.claude/settings.json`) only need permissions:
+
+```json
+{
+  "permissions": {
+    "allow": ["Bash(find:*)", "Bash(tree:*)", "Bash(grep:*)"],
+    "additionalDirectories": ["/path/to/additional/dirs"]
   }
 }
 ```
@@ -356,24 +369,33 @@ source ~/.bashrc
 
 **Index not loading?**
 ```bash
-# Check hooks are configured
+# Check hooks are configured globally
 project-index status
 
-# Verify hook files exist
-ls -la .claude/hooks/
+# Verify global hook files exist
+ls -la ~/.claude/hooks/
 
 # Test hooks manually
-./.claude/hooks/load-index.sh
+~/.claude/hooks/load-index.sh
 ```
 
 **Watcher not updating?**
 ```bash
 # Check watcher status
-./.claude/hooks/indexer.sh status
+~/.claude/hooks/indexer.sh status
 
 # Restart watcher
-./.claude/hooks/indexer.sh stop
-./.claude/hooks/indexer.sh start
+~/.claude/hooks/indexer.sh stop
+~/.claude/hooks/indexer.sh start
+```
+
+**Hook path errors (v1.2 migration)?**
+```bash
+# Remove old local hooks if they exist
+rm -rf .claude/hooks/
+
+# Ensure global hooks are installed
+ls -la ~/.claude/hooks/indexer.sh ~/.claude/hooks/load-index.sh
 ```
 
 **Missing symbols?**
