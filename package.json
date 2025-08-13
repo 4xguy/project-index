@@ -1,7 +1,7 @@
 {
   "name": "project-index",
-  "version": "1.0.0",
-  "description": "Token-free project indexer for Claude Code",
+  "version": "1.2.0",
+  "description": "Token-free project indexer for Claude Code with React and API detection",
   "main": "dist/index.js",
   "bin": {
     "project-index": "dist/cli.js",
@@ -12,28 +12,44 @@
     "dev": "ts-node src/cli.ts",
     "start": "node dist/cli.js",
     "watch": "tsc --watch",
-    "test": "jest"
+    "test": "jest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "claude-code",
     "indexer",
     "ast",
-    "symbol-extraction"
+    "symbol-extraction",
+    "react-components",
+    "api-endpoints",
+    "python-parser",
+    "typescript-parser"
   ],
-  "author": "4xguy",
+  "author": "4xguy <keithrivas@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/4xguy/project-index.git"
+  },
+  "homepage": "https://github.com/4xguy/project-index#readme",
+  "bugs": {
+    "url": "https://github.com/4xguy/project-index/issues"
+  },
   "dependencies": {
     "ts-morph": "^21.0.1",
     "chokidar": "^3.5.3",
     "commander": "^11.1.0",
     "@modelcontextprotocol/sdk": "^0.5.0",
     "fast-glob": "^3.3.2",
-    "crypto": "^1.0.1"
+    "crypto": "^1.0.1",
+    "python-ast": "^0.1.0",
+    "pyparser": "^0.0.8"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
     "ts-node": "^10.9.2",
     "@types/node": "^20.10.6",
+    "@types/react": "^18.0.0",
     "jest": "^29.7.0",
     "@types/jest": "^29.5.11",
     "ts-jest": "^29.1.1"

@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, statSync, existsSync, mkdirSync } from 'fs
 import { join, relative, resolve, dirname } from 'path';
 import fg from 'fast-glob';
 import { TypeScriptParser } from '../parsers/typescript';
+import { PythonParser } from '../parsers/python';
 import { 
   ProjectIndex, 
   FileInfo, 
@@ -27,6 +28,10 @@ export class ProjectIndexer {
     this.parsers.set('javascript', tsParser);
     this.parsers.set('tsx', tsParser);
     this.parsers.set('jsx', tsParser);
+
+    // Register Python parser
+    const pythonParser = new PythonParser();
+    this.parsers.set('python', pythonParser);
   }
 
   /**
@@ -117,7 +122,7 @@ export class ProjectIndexer {
     try {
       const parseResult = await parser.parse(content, relativePath);
       
-      return {
+      const fileInfo = {
         path: relativePath,
         language,
         size: stats.size,
@@ -127,7 +132,19 @@ export class ProjectIndexer {
         exports: parseResult.exports,
         symbols: parseResult.symbols,
         outline: parseResult.outline
-      };
+      } as any;
+
+      // Add React components if present
+      if (parseResult.reactComponents && parseResult.reactComponents.length > 0) {
+        fileInfo.reactComponents = parseResult.reactComponents;
+      }
+
+      // Add API endpoints if present
+      if (parseResult.apiEndpoints && parseResult.apiEndpoints.length > 0) {
+        fileInfo.apiEndpoints = parseResult.apiEndpoints;
+      }
+
+      return fileInfo;
     } catch (error) {
       console.warn(`⚠️  Parse error in ${relativePath}:`, error);
       return null;

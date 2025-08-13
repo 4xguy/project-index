@@ -18,6 +18,8 @@ export interface FileInfo {
   exports: ExportInfo[];
   symbols: SymbolInfo[];
   outline: OutlineSection[];
+  reactComponents?: ComponentInfo[];
+  apiEndpoints?: ApiEndpointInfo[];
 }
 
 export interface ImportInfo {
@@ -73,7 +75,14 @@ export enum SymbolKind {
   Struct = 'struct',
   Event = 'event',
   Operator = 'operator',
-  TypeParameter = 'typeparameter'
+  TypeParameter = 'typeparameter',
+  // React-specific symbols
+  Component = 'component',
+  Hook = 'hook',
+  PropsInterface = 'props',
+  // API-specific symbols  
+  ApiEndpoint = 'endpoint',
+  ApiRoute = 'route'
 }
 
 export interface OutlineSection {
@@ -101,4 +110,27 @@ export interface ParseResult {
   exports: ExportInfo[];
   symbols: SymbolInfo[];
   outline: OutlineSection[];
+  reactComponents?: ComponentInfo[];
+  apiEndpoints?: ApiEndpointInfo[];
+}
+
+// React-specific interfaces
+export interface ComponentInfo {
+  name: string;
+  type: 'functional' | 'class';
+  line: number;
+  propsType?: string;
+  hooks?: string[];
+  isExported: boolean;
+  displayName?: string;
+}
+
+// API-specific interfaces
+export interface ApiEndpointInfo {
+  method: string;
+  path: string;
+  handler: string;
+  line: number;
+  framework?: 'express' | 'koa' | 'fastify' | 'nextjs' | 'nestjs';
+  middleware?: string[];
 }

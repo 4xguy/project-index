@@ -5,7 +5,9 @@ import {
   ExportInfo, 
   SymbolInfo, 
   OutlineSection,
-  SymbolKind 
+  SymbolKind,
+  ComponentInfo,
+  ApiEndpointInfo
 } from '../types';
 
 export class TypeScriptParser {
@@ -28,12 +30,23 @@ export class TypeScriptParser {
   async parse(content: string, filePath: string): Promise<ParseResult> {
     const sourceFile = this.project.createSourceFile(filePath, content, { overwrite: true });
     
-    return {
+    const result: ParseResult = {
       imports: this.extractImports(sourceFile),
       exports: this.extractExports(sourceFile),
       symbols: this.extractSymbols(sourceFile),
       outline: this.extractOutline(sourceFile)
     };
+
+    // Enhance with React and API detection if applicable
+    if (this.hasReactImports(sourceFile)) {
+      result.reactComponents = this.extractReactComponents(sourceFile);
+    }
+    
+    if (this.hasApiFrameworks(sourceFile)) {
+      result.apiEndpoints = this.extractApiEndpoints(sourceFile);
+    }
+
+    return result;
   }
 
   private extractImports(sourceFile: SourceFile): ImportInfo[] {
@@ -494,5 +507,648 @@ export class TypeScriptParser {
       return description.trim() || undefined;
     }
     return undefined;
+  }
+
+  private hasReactImports(sourceFile: SourceFile): boolean {
+    return sourceFile.getImportDeclarations().some(importDecl => {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      return moduleSpecifier === 'react' || moduleSpecifier.includes('react') || 
+             moduleSpecifier.includes('jsx') || moduleSpecifier.includes('@types/react');
+    });
+  }
+
+  private hasApiFrameworks(sourceFile: SourceFile): boolean {
+    return sourceFile.getImportDeclarations().some(importDecl => {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      return ['express', 'koa', 'fastify', 'next', '@nestjs/common'].some(framework => 
+        moduleSpecifier.includes(framework));
+    });
+  }
+
+  private extractReactComponents(sourceFile: SourceFile): ComponentInfo[] {
+    const components: ComponentInfo[] = [];
+
+    // Find function components
+    sourceFile.getFunctions().forEach(func => {
+      if (this.isFunctionComponent(func)) {
+        const propsParam = func.getParameters()[0];
+        const propsType = propsParam ? this.getTypeString(propsParam.getTypeNode()) : undefined;
+        
+        components.push({
+          name: func.getName() || 'AnonymousComponent',
+          type: 'functional',
+          line: func.getStartLineNumber(),
+          propsType,
+          hooks: this.extractHooks(func),
+          isExported: func.isExported(),
+          displayName: this.getDisplayName(func)
+        });
+      }
+    });
+
+    // Find variable components (arrow functions, forwardRef, memo, HOCs)
+    sourceFile.getVariableDeclarations().forEach(varDecl => {
+      const initializer = varDecl.getInitializer();
+      if (initializer) {
+        // Check for forwardRef components
+        const forwardRefInfo = this.extractForwardRefComponent(initializer, varDecl);
+        if (forwardRefInfo) {
+          components.push(forwardRefInfo);
+          return;
+        }
+        
+        // Check for memo components
+        const memoInfo = this.extractMemoComponent(initializer, varDecl);
+        if (memoInfo) {
+          components.push(memoInfo);
+          return;
+        }
+        
+        // Check for HOC usage (withLoading(Component))
+        const hocInfo = this.extractHOCComponent(initializer, varDecl);
+        if (hocInfo) {
+          components.push(hocInfo);
+          return;
+        }
+        
+        // Regular arrow function components
+        if (this.isComponentArrowFunction(initializer)) {
+          const arrowFunc = initializer.asKindOrThrow(SyntaxKind.ArrowFunction);
+          const propsParam = arrowFunc.getParameters()[0];
+          const propsType = propsParam ? this.getTypeString(propsParam.getTypeNode()) : undefined;
+          
+          components.push({
+            name: varDecl.getName(),
+            type: 'functional',
+            line: varDecl.getStartLineNumber(),
+            propsType,
+            hooks: this.extractHooks(arrowFunc),
+            isExported: varDecl.isExported(),
+            displayName: this.getDisplayName(varDecl)
+          });
+        }
+      }
+    });
+
+    // Find class components
+    sourceFile.getClasses().forEach(cls => {
+      if (this.isClassComponent(cls)) {
+        const propsInterface = this.getPropsInterface(cls);
+        
+        components.push({
+          name: cls.getName() || 'AnonymousComponent',
+          type: 'class',
+          line: cls.getStartLineNumber(),
+          propsType: propsInterface,
+          hooks: [], // Class components don't use hooks
+          isExported: cls.isExported(),
+          displayName: this.getDisplayName(cls)
+        });
+      }
+    });
+
+    // Find HOC functions
+    sourceFile.getFunctions().forEach(func => {
+      if (this.isHOCFunction(func)) {
+        components.push({
+          name: func.getName() || 'AnonymousHOC',
+          type: 'hoc' as any,
+          line: func.getStartLineNumber(),
+          hooks: [],
+          isExported: func.isExported(),
+          displayName: this.getDisplayName(func)
+        });
+      }
+    });
+
+    return components;
+  }
+
+  private extractApiEndpoints(sourceFile: SourceFile): ApiEndpointInfo[] {
+    const endpoints: ApiEndpointInfo[] = [];
+
+    // Find Express/Koa/Fastify-style routes
+    sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression).forEach(callExpr => {
+      const expression = callExpr.getExpression();
+      
+      if (expression.getKind() === SyntaxKind.PropertyAccessExpression) {
+        const propAccess = expression.asKindOrThrow(SyntaxKind.PropertyAccessExpression);
+        const methodName = propAccess.getName();
+        const objectName = propAccess.getExpression().getText();
+        const httpMethods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'];
+        
+        if (httpMethods.includes(methodName.toLowerCase())) {
+          const args = callExpr.getArguments();
+          if (args.length >= 2) {
+            const pathArg = args[0];
+            const handlerArg = args[args.length - 1];
+            
+            let path = 'unknown';
+            if (pathArg.getKind() === SyntaxKind.StringLiteral) {
+              path = pathArg.getText().replace(/['"]/g, '');
+            }
+            
+            let handler = 'anonymous';
+            if (handlerArg.getKind() === SyntaxKind.Identifier) {
+              handler = handlerArg.getText();
+            } else if (handlerArg.getKind() === SyntaxKind.ArrowFunction) {
+              handler = 'arrow function';
+            }
+            
+            // Detect framework based on the specific call pattern
+            let framework: 'express' | 'koa' | 'fastify' | 'nextjs' | 'nestjs' = this.detectFrameworkFromCall(callExpr, objectName, sourceFile);
+            
+            endpoints.push({
+              method: methodName.toUpperCase(),
+              path,
+              handler,
+              line: callExpr.getStartLineNumber(),
+              framework,
+              middleware: this.extractMiddleware(callExpr)
+            });
+          }
+        }
+      }
+    });
+
+    // Check for Next.js API route exports
+    sourceFile.getFunctions().forEach(func => {
+      const name = func.getName();
+      if (func.isExported() && name && ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(name)) {
+        endpoints.push({
+          method: name,
+          path: '/api/[route]', // Next.js uses file-based routing
+          handler: 'Next.js API handler',
+          line: func.getStartLineNumber(),
+          framework: 'nextjs',
+          middleware: []
+        });
+      }
+    });
+
+    return endpoints;
+  }
+
+  private isFunctionComponent(func: any): boolean {
+    // Check if function returns JSX
+    const returnType = func.getReturnTypeNode()?.getText();
+    if (returnType && (returnType.includes('JSX') || returnType.includes('ReactElement'))) {
+      return true;
+    }
+
+    // Check if function body contains JSX return
+    const body = func.getBody();
+    if (body) {
+      const hasJSXReturn = body.getDescendantsOfKind(SyntaxKind.ReturnStatement)
+        .some((returnStmt: any) => {
+          const expr = returnStmt.getExpression();
+          return expr && this.containsJSX(expr);
+        });
+      if (hasJSXReturn) return true;
+    }
+
+    // Check function name pattern
+    const name = func.getName();
+    return name && /^[A-Z][a-zA-Z0-9]*$/.test(name);
+  }
+
+  private isComponentArrowFunction(node: any): boolean {
+    if (node.getKind() !== SyntaxKind.ArrowFunction) return false;
+    
+    const body = node.getBody();
+    if (!body) return false;
+    
+    // Check for JSX return
+    if (this.containsJSX(body)) return true;
+    
+    // Check return statements
+    if (body.getKind() === SyntaxKind.Block) {
+      return body.getDescendantsOfKind(SyntaxKind.ReturnStatement)
+        .some((returnStmt: any) => {
+          const expr = returnStmt.getExpression();
+          return expr && this.containsJSX(expr);
+        });
+    }
+    
+    return false;
+  }
+
+  private isClassComponent(cls: any): boolean {
+    const heritage = cls.getHeritageClauses();
+    return heritage.some((clause: any) => {
+      const types = clause.getTypeNodes();
+      return types.some((type: any) => {
+        const text = type.getText();
+        return text.includes('Component') || text.includes('PureComponent');
+      });
+    });
+  }
+
+  private containsJSX(node: any): boolean {
+    if (!node) return false;
+    
+    // Check for JSX elements or fragments
+    const jsxKinds = [
+      SyntaxKind.JsxElement,
+      SyntaxKind.JsxSelfClosingElement,
+      SyntaxKind.JsxFragment
+    ];
+    
+    return jsxKinds.some(kind => node.getDescendantsOfKind(kind).length > 0);
+  }
+
+  private extractHooks(node: any): string[] {
+    const hooks: string[] = [];
+    
+    if (node) {
+      node.getDescendantsOfKind(SyntaxKind.CallExpression).forEach((callExpr: any) => {
+        const expression = callExpr.getExpression();
+        if (expression.getKind() === SyntaxKind.Identifier) {
+          const name = expression.getText();
+          if (name.startsWith('use') && name.length > 3) {
+            hooks.push(name);
+          }
+        }
+      });
+    }
+    
+    return [...new Set(hooks)]; // Remove duplicates
+  }
+
+  private getPropsInterface(cls: any): string | undefined {
+    const heritage = cls.getHeritageClauses();
+    for (const clause of heritage) {
+      const types = clause.getTypeNodes();
+      for (const type of types) {
+        const typeArgs = type.getTypeArguments();
+        if (typeArgs && typeArgs.length > 0) {
+          return typeArgs[0].getText();
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private extractForwardRefComponent(initializer: any, varDecl: any): ComponentInfo | null {
+    if (initializer.getKind() === SyntaxKind.CallExpression) {
+      const callExpr = initializer.asKindOrThrow(SyntaxKind.CallExpression);
+      const expression = callExpr.getExpression();
+      
+      if (expression.getKind() === SyntaxKind.Identifier && expression.getText() === 'forwardRef') {
+        const args = callExpr.getArguments();
+        if (args.length > 0) {
+          const componentArg = args[0];
+          let hooks: string[] = [];
+          let propsType: string | undefined;
+          
+          if (componentArg.getKind() === SyntaxKind.ArrowFunction) {
+            const arrowFunc = componentArg.asKindOrThrow(SyntaxKind.ArrowFunction);
+            hooks = this.extractHooks(arrowFunc);
+            const propsParam = arrowFunc.getParameters()[0];
+            propsType = propsParam ? this.getTypeString(propsParam.getTypeNode()) : undefined;
+          }
+          
+          // Get type arguments from forwardRef<RefType, PropsType>
+          const typeArgs = callExpr.getTypeArguments();
+          if (typeArgs.length > 1) {
+            propsType = typeArgs[1].getText();
+          }
+          
+          return {
+            name: varDecl.getName(),
+            type: 'forwardRef' as any,
+            line: varDecl.getStartLineNumber(),
+            propsType,
+            hooks,
+            isExported: varDecl.isExported(),
+            displayName: this.getDisplayName(varDecl)
+          };
+        }
+      }
+    }
+    return null;
+  }
+  
+  private extractMemoComponent(initializer: any, varDecl: any): ComponentInfo | null {
+    if (initializer.getKind() === SyntaxKind.CallExpression) {
+      const callExpr = initializer.asKindOrThrow(SyntaxKind.CallExpression);
+      const expression = callExpr.getExpression();
+      
+      if (expression.getKind() === SyntaxKind.Identifier && expression.getText() === 'memo') {
+        const args = callExpr.getArguments();
+        if (args.length > 0) {
+          const componentArg = args[0];
+          let hooks: string[] = [];
+          let propsType: string | undefined;
+          
+          if (componentArg.getKind() === SyntaxKind.ArrowFunction) {
+            const arrowFunc = componentArg.asKindOrThrow(SyntaxKind.ArrowFunction);
+            hooks = this.extractHooks(arrowFunc);
+            const propsParam = arrowFunc.getParameters()[0];
+            propsType = propsParam ? this.getTypeString(propsParam.getTypeNode()) : undefined;
+          }
+          
+          // Get type arguments from memo<PropsType>
+          const typeArgs = callExpr.getTypeArguments();
+          if (typeArgs.length > 0) {
+            propsType = typeArgs[0].getText();
+          }
+          
+          return {
+            name: varDecl.getName(),
+            type: 'memo' as any,
+            line: varDecl.getStartLineNumber(),
+            propsType,
+            hooks,
+            isExported: varDecl.isExported(),
+            displayName: this.getDisplayName(varDecl)
+          };
+        }
+      }
+    }
+    return null;
+  }
+  
+  private extractHOCComponent(initializer: any, varDecl: any): ComponentInfo | null {
+    if (initializer.getKind() === SyntaxKind.CallExpression) {
+      const callExpr = initializer.asKindOrThrow(SyntaxKind.CallExpression);
+      const expression = callExpr.getExpression();
+      
+      // Check if it's a function call that could be an HOC
+      if (expression.getKind() === SyntaxKind.Identifier) {
+        const functionName = expression.getText();
+        const args = callExpr.getArguments();
+        
+        // HOCs typically start with 'with' and take a component as argument
+        if (functionName.startsWith('with') && args.length > 0) {
+          const componentArg = args[0];
+          
+          return {
+            name: varDecl.getName(),
+            type: 'hoc-wrapped' as any,
+            line: varDecl.getStartLineNumber(),
+            hooks: [], // Can't determine hooks from HOC usage
+            isExported: varDecl.isExported(),
+            displayName: this.getDisplayName(varDecl),
+            wrappedComponent: componentArg.getText(),
+            hocFunction: functionName
+          } as any;
+        }
+      }
+    }
+    return null;
+  }
+  
+  private isHOCFunction(func: any): boolean {
+    const name = func.getName();
+    if (!name || !name.startsWith('with')) return false;
+    
+    // Check function parameters - HOCs typically take a component as parameter
+    const params = func.getParameters();
+    const hasComponentParam = params.some((param: any) => {
+      const typeNode = param.getTypeNode();
+      if (typeNode) {
+        const typeText = typeNode.getText();
+        return typeText.includes('ComponentType') || typeText.includes('React.ComponentType');
+      }
+      return false;
+    });
+    
+    if (hasComponentParam) {
+      return true;
+    }
+    
+    // Check if function returns a component
+    const returnType = func.getReturnTypeNode()?.getText();
+    if (returnType && (returnType.includes('ComponentType') || returnType.includes('ReactElement'))) {
+      return true;
+    }
+    
+    // Check if function body returns JSX or a component
+    const body = func.getBody();
+    if (body) {
+      const returnStatements = body.getDescendantsOfKind(SyntaxKind.ReturnStatement);
+      return returnStatements.some((stmt: any) => {
+        const expr = stmt.getExpression();
+        return expr && (this.containsJSX(expr) || this.looksLikeComponentReturn(expr));
+      });
+    }
+    
+    return false;
+  }
+  
+  private looksLikeComponentReturn(expr: any): boolean {
+    // Check if returning a function that looks like a component
+    if (expr.getKind() === SyntaxKind.ArrowFunction || expr.getKind() === SyntaxKind.FunctionExpression) {
+      return this.containsJSX(expr.getBody());
+    }
+    
+    // Check if returning a call to a component-like function
+    if (expr.getKind() === SyntaxKind.CallExpression) {
+      const callee = expr.getExpression();
+      if (callee.getKind() === SyntaxKind.Identifier) {
+        const name = callee.getText();
+        return /^[A-Z]/.test(name); // Starts with capital letter
+      }
+    }
+    
+    return false;
+  }
+
+  private getDisplayName(node: any): string | undefined {
+    // Look for displayName property assignment
+    const parent = node.getParent();
+    if (parent) {
+      const statements = parent.getStatements?.() || [];
+      for (const stmt of statements as any[]) {
+        if (stmt.getKind() === SyntaxKind.ExpressionStatement) {
+          const expr = stmt.getExpression();
+          if (expr && expr.getKind() === SyntaxKind.BinaryExpression) {
+            const left = expr.getLeft();
+            if (left.getText().includes('.displayName')) {
+              const right = expr.getRight();
+              if (right.getKind() === SyntaxKind.StringLiteral) {
+                return right.getText().replace(/['"]/g, '');
+              }
+            }
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  private getTypeString(typeNode: any): string | undefined {
+    return typeNode ? typeNode.getText() : undefined;
+  }
+
+  private detectFramework(sourceFile: SourceFile): 'express' | 'koa' | 'fastify' | 'nextjs' | 'nestjs' {
+    const imports = sourceFile.getImportDeclarations();
+    
+    // First check imports - most reliable indicator
+    for (const importDecl of imports) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue();
+      
+      // Exact matches first (most specific)
+      if (moduleSpecifier === 'express') return 'express';
+      if (moduleSpecifier === 'koa') return 'koa';
+      if (moduleSpecifier === 'fastify') return 'fastify';
+      if (moduleSpecifier.startsWith('@nestjs/')) return 'nestjs';
+      if (moduleSpecifier === 'next' || moduleSpecifier.startsWith('next/')) return 'nextjs';
+      
+      // Check for router imports that indicate specific frameworks
+      if (moduleSpecifier === 'koa-router') return 'koa';
+    }
+    
+    // Check for Next.js API route patterns (export async function GET/POST)
+    const hasNextApiRoutes = sourceFile.getFunctions().some(func => {
+      const name = func.getName();
+      return func.isExported() && name && ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(name);
+    });
+    
+    if (hasNextApiRoutes) {
+      return 'nextjs';
+    }
+    
+    // Check for actual NestJS decorators (not simulated ones)
+    const hasRealNestDecorators = sourceFile.getClasses().some(cls => {
+      // Check if this is a controller with actual NestJS imports
+      const hasNestImports = imports.some(imp => 
+        imp.getModuleSpecifierValue().startsWith('@nestjs/'));
+      
+      if (!hasNestImports) return false;
+      
+      return cls.getDecorators().some(decorator => {
+        const decoratorText = decorator.getFullText();
+        return decoratorText.includes('Controller') || decoratorText.includes('Injectable');
+      });
+    });
+    
+    if (hasRealNestDecorators) {
+      return 'nestjs';
+    }
+    
+    // Check for framework-specific patterns in variable initializations
+    const variableDecls = sourceFile.getVariableDeclarations();
+    for (const varDecl of variableDecls) {
+      const initializer = varDecl.getInitializer();
+      if (initializer) {
+        const initText = initializer.getText();
+        if (initText.includes('express()')) return 'express';
+        if (initText.includes('new Koa()')) return 'koa';
+        if (initText.includes('fastify()')) return 'fastify';
+      }
+    }
+    
+    // Check method call patterns to infer framework
+    const callExpressions = sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression);
+    for (const callExpr of callExpressions) {
+      const expression = callExpr.getExpression();
+      if (expression.getKind() === SyntaxKind.PropertyAccessExpression) {
+        const propAccess = expression.asKindOrThrow(SyntaxKind.PropertyAccessExpression);
+        const objectName = propAccess.getExpression().getText();
+        const methodName = propAccess.getName();
+        
+        // Koa uses ctx parameter in router methods
+        if (objectName === 'router' && ['get', 'post', 'put', 'delete'].includes(methodName)) {
+          const args = callExpr.getArguments();
+          if (args.length >= 2) {
+            const handlerArg = args[args.length - 1];
+            if (handlerArg.getText().includes('ctx')) {
+              return 'koa';
+            }
+          }
+        }
+        
+        // Fastify uses specific method signatures
+        if (objectName === 'server' && ['get', 'post', 'put', 'delete'].includes(methodName)) {
+          return 'fastify';
+        }
+      }
+    }
+    
+    return 'express'; // Final fallback
+  }
+
+  private detectFrameworkFromCall(callExpr: any, objectName: string, sourceFile: SourceFile): 'express' | 'koa' | 'fastify' | 'nextjs' | 'nestjs' {
+    const args = callExpr.getArguments();
+    
+    // Check the handler signature to determine framework
+    if (args.length >= 2) {
+      const handlerArg = args[args.length - 1];
+      if (handlerArg.getKind() === SyntaxKind.ArrowFunction) {
+        const arrowFunc = handlerArg.asKindOrThrow(SyntaxKind.ArrowFunction);
+        const params = arrowFunc.getParameters();
+        
+        if (params.length >= 1) {
+          const firstParam = params[0].getName();
+          const secondParam = params.length > 1 ? params[1].getName() : '';
+          
+          // Koa uses (ctx) or (ctx, next)
+          if (firstParam === 'ctx' || (firstParam === 'ctx' && secondParam === 'next')) {
+            return 'koa';
+          }
+          
+          // Express uses (req, res) or (req, res, next)
+          if (firstParam === 'req' && secondParam === 'res') {
+            return 'express';
+          }
+          
+          // Fastify uses (request, reply)
+          if (firstParam === 'request' && secondParam === 'reply') {
+            return 'fastify';
+          }
+        }
+      }
+    }
+    
+    // Check object name patterns
+    if (objectName === 'router') {
+      // Could be Express router or Koa router - check imports
+      const imports = sourceFile.getImportDeclarations();
+      for (const importDecl of imports) {
+        const moduleSpecifier = importDecl.getModuleSpecifierValue();
+        if (moduleSpecifier === 'koa-router') return 'koa';
+      }
+      return 'express'; // Default for router
+    }
+    
+    if (objectName === 'app') {
+      // Check what app was initialized as
+      const variableDecls = sourceFile.getVariableDeclarations();
+      for (const varDecl of variableDecls) {
+        if (varDecl.getName() === 'app') {
+          const initializer = varDecl.getInitializer();
+          if (initializer) {
+            const initText = initializer.getText();
+            if (initText.includes('express()')) return 'express';
+            if (initText.includes('new Koa()')) return 'koa';
+          }
+        }
+      }
+    }
+    
+    if (objectName === 'server') {
+      // Likely Fastify
+      return 'fastify';
+    }
+    
+    // Fallback to global detection
+    return this.detectFramework(sourceFile);
+  }
+  
+  private extractMiddleware(callExpr: any): string[] {
+    const args = callExpr.getArguments();
+    const middleware: string[] = [];
+    
+    // Middleware are typically the arguments between path and handler
+    for (let i = 1; i < args.length - 1; i++) {
+      const arg = args[i];
+      if (arg.getKind() === SyntaxKind.Identifier) {
+        middleware.push(arg.getText());
+      }
+    }
+    
+    return middleware;
   }
 }

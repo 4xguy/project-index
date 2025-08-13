@@ -5,6 +5,93 @@ All notable changes to the Project Index system will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-08-13
+
+### 🎉 Major Features Added
+
+#### React Component Detection
+- **Functional Components**: Automatically detects arrow functions and regular functions returning JSX
+- **Class Components**: Identifies React.Component and React.PureComponent extensions  
+- **Hook Analysis**: Extracts all hook usage including useState, useEffect, custom hooks
+- **Props Extraction**: Captures prop interfaces and TypeScript type definitions
+- **Export Tracking**: Determines which components are exported vs internal
+
+Example output:
+```json
+"reactComponents": [
+  {
+    "name": "UserProfile",
+    "type": "functional", 
+    "line": 23,
+    "propsType": "UserProfileProps",
+    "hooks": ["useState", "useEffect", "useCallback"],
+    "isExported": true
+  }
+]
+```
+
+#### API Endpoint Mapping
+- **Express Routes**: Detects app.get, app.post, app.put, app.delete, app.patch calls
+- **Middleware Extraction**: Captures middleware functions between path and handler
+- **Multi-Framework Support**: Identifies Express, Koa, Fastify, Next.js, NestJS patterns
+- **Handler Analysis**: Determines handler type (arrow function, named function, etc.)
+
+Example output:
+```json
+"apiEndpoints": [
+  {
+    "method": "POST", 
+    "path": "/api/users/:id",
+    "handler": "updateUserHandler",
+    "line": 45,
+    "framework": "express",
+    "middleware": ["authenticate", "validate"]
+  }
+]
+```
+
+#### Python AST Parser
+- **Complete AST Parsing**: Uses pyparser library for comprehensive Python analysis
+- **Import/Export Detection**: Tracks Python imports, from imports, and module exports
+- **Symbol Extraction**: Functions, classes, methods with full signatures
+- **Docstring Support**: Captures and preserves Python docstrings
+
+### 🔧 Enhanced Type System
+- Added `ComponentInfo` interface for React component metadata
+- Added `ApiEndpointInfo` interface for API endpoint details
+- Extended `SymbolKind` enum with new symbol types:
+  - `Component`, `Hook`, `PropsInterface` for React
+  - `ApiEndpoint`, `ApiRoute` for API detection
+- Enhanced `FileInfo` with optional `reactComponents` and `apiEndpoints` arrays
+- Updated `ParseResult` to include React and API detection results
+
+### 📦 NPM Package Preparation  
+- Configured package.json for npm publication with proper metadata
+- Created .npmignore to exclude development files from package
+- Added repository, homepage, and bug tracker links
+- Set up TypeScript declarations and proper entry points
+- Added prepublishOnly script for automated builds
+
+### 🛠️ Infrastructure Improvements
+- Enhanced TypeScript parser with comprehensive JSX/TSX detection
+- Added framework detection logic for multiple API libraries
+- Improved AST traversal using SyntaxKind-based detection patterns
+- Added sophisticated middleware and handler analysis
+- Extended core indexer to handle new parser capabilities
+
+### 📋 Testing & Validation
+- Validated React component detection with functional and class components
+- Tested API endpoint detection with Express middleware patterns  
+- Verified hook extraction across useState, useEffect, and custom hooks
+- Confirmed framework detection for Express, Koa, Fastify patterns
+- Ensured proper JSON schema compliance for new features
+
+### 🐛 Improvements
+- Fixed Python parser TypeScript integration issues
+- Improved error handling for malformed JSX components
+- Enhanced framework detection accuracy
+- Better handling of arrow functions vs regular functions
+
 ## [1.0.0] - 2025-08-13
 
 ### Added

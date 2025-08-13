@@ -1,0 +1,67 @@
+# Source files
+src/
+tsconfig.json
+*.tsbuildinfo
+
+# Development files
+.env
+.env.*
+
+# Runtime files
+.indexer.log
+.indexer.pid
+
+# Test files  
+test/
+tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Generated index files (these are project-specific)
+.context/.project/PROJECT_INDEX.json
+PROJECT_INDEX.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+
+# Documentation development
+docs/
+examples/
+sample-projects/
+
+# Git files
+.git/
+.gitignore
+
+# CI files
+.github/
+.travis.yml
+.circleci/
+
+# Local development
+.cache/
+coverage/
+.nyc_output/
+
+# Lock files (let users choose their package manager)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
