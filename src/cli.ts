@@ -212,17 +212,20 @@ program
   .argument('<query>', 'Symbol name or pattern')
   .argument('[path]', 'Project path', '.')
   .option('-e, --exact', 'Exact match only')
+  .option('--json', 'Output as JSON for agent consumption')
   .action((query: string, projectPath: string, options) => {
     const config = createConfig(projectPath);
     const indexer = new ProjectIndexer(config);
     const index = indexer.loadIndex();
     
     if (!index) {
-      console.log('❌ No index file found. Run "project-index index" first.');
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'No index found' }));
+      } else {
+        console.log('❌ No index file found. Run "project-index index" first.');
+      }
       return;
     }
-
-    console.log(`🔍 Searching for: "${query}"\n`);
     
     const results = Object.entries(index.symbolIndex).filter(([symbol, location]) => {
       return options.exact 
@@ -230,15 +233,27 @@ program
         : symbol.toLowerCase().includes(query.toLowerCase());
     });
 
-    if (results.length === 0) {
-      console.log('❌ No symbols found');
-      return;
-    }
+    if (options.json) {
+      const jsonResult = {
+        query,
+        exact: options.exact || false,
+        results: results.map(([symbol, location]) => ({ symbol, location })),
+        count: results.length
+      };
+      console.log(JSON.stringify(jsonResult, null, 2));
+    } else {
+      console.log(`🔍 Searching for: "${query}"\n`);
+      
+      if (results.length === 0) {
+        console.log('❌ No symbols found');
+        return;
+      }
 
-    console.log(`✅ Found ${results.length} symbols:\n`);
-    results.forEach(([symbol, location]) => {
-      console.log(`   ${symbol} → ${location}`);
-    });
+      console.log(`✅ Found ${results.length} symbols:\n`);
+      results.forEach(([symbol, location]) => {
+        console.log(`   ${symbol} → ${location}`);
+      });
+    }
   });
 
 program
