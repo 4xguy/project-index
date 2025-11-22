@@ -279,12 +279,14 @@ program
   .argument('[path]', 'Project path', '.')
   .option('-k, --k <number>', 'number of results', (v) => parseInt(v, 10))
   .option('--model <name>', 'embedding model (default intfloat/e5-small-v2)')
+  .option('--profile <profile>', 'semantic profile: fast|quality')
   .option('--json', 'Output as JSON')
   .action(async (query: string, projectPath: string, options) => {
     const serverResp = await callServer('/semsearch', {
       query,
       k: options.k,
       model: options.model,
+      profile: options.profile,
     });
     if (serverResp) {
       const results = serverResp.results || [];

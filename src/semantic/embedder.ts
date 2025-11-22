@@ -1,9 +1,11 @@
 import { pipeline, env } from '@xenova/transformers';
+import { pickModel, SemanticProfile, detectGPU } from './models';
 
 type EmbeddingPipeline = (input: string | string[]) => Promise<{ data: number[] | number[][] }>;
 
 export interface EmbedderOptions {
   model?: string;
+  profile?: SemanticProfile;
 }
 
 /**
@@ -18,19 +20,26 @@ export class Embedder {
     return this.model;
   }
 
-  private constructor(model?: string) {
-    // Xenova namespace hosts onnx-converted models; default to a small, widely cached model.
-    this.model = model ?? 'Xenova/all-MiniLM-L6-v2';
+  private constructor(model?: string, profile?: SemanticProfile) {
+    // Pick model based on profile and GPU detection unless explicitly provided.
+    if (model) {
+      this.model = model;
+    } else {
+      const gpu = detectGPU();
+      const prof = profile ?? 'fast';
+      const spec = pickModel(prof, gpu);
+      this.model = spec.name;
+    }
     // Disable telemetry/cache downloads to ~/.cache if not writable.
     env.allowRemoteModels = true;
     env.useBrowserCache = false;
   }
 
-  static get(model?: string): Embedder {
+  static get(model?: string, profile?: SemanticProfile): Embedder {
     if (!Embedder.instance) {
-      Embedder.instance = new Embedder(model);
+      Embedder.instance = new Embedder(model, profile);
     } else if (model && Embedder.instance.model !== model) {
-      Embedder.instance = new Embedder(model);
+      Embedder.instance = new Embedder(model, profile);
     }
     return Embedder.instance;
   }

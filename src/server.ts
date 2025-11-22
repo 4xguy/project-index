@@ -46,11 +46,11 @@ async function handleSearch(state: ServerState, req: any, res: http.ServerRespon
 }
 
 async function handleSemSearch(state: ServerState, req: any, res: http.ServerResponse, body: any) {
-  const { query, k, model } = body || {};
+  const { query, k, model, profile } = body || {};
   if (!query) return send(res, 400, { error: 'query required' });
   try {
     const cache = await ensureCache(state);
-    const results = await semanticSearchWithCache(query, cache, { k, model });
+    const results = await semanticSearchWithCache(query, cache, { k, model, profile });
     send(res, 200, { query, results });
   } catch (err: any) {
     send(res, 500, { error: err?.message || String(err) });

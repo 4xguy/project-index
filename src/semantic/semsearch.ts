@@ -22,6 +22,7 @@ export interface SemSearchOptions {
   projectRoot?: string;
   k?: number;
   model?: string;
+  profile?: 'fast' | 'quality';
 }
 
 const DEFAULT_K = 20;
@@ -88,9 +89,10 @@ export async function buildDocCache(
   index: ProjectIndex,
   projectRoot: string,
   model?: string,
+  profile?: 'fast' | 'quality',
   reuse?: DocCache
 ): Promise<DocCache> {
-  const embedder = Embedder.get(model);
+  const embedder = Embedder.get(model, profile);
   const entries: DocEntry[] = Object.entries(index.symbolIndex || {}).map(([sym, loc]) => {
     const [file, lineStr] = loc.split(':');
     const line = Number(lineStr);
@@ -125,8 +127,7 @@ export async function semanticSearch(
   const entries = Object.entries(index.symbolIndex || {});
   if (!entries.length) return [];
 
-  const model = opts.model;
-  const embedder = Embedder.get(model);
+  const embedder = Embedder.get(opts.model, opts.profile);
 
   const docs = entries.map(([sym, loc]) => toText(sym, loc));
   const [queryVec, ...docVecs] = await embedder.embed([query, ...docs]);
@@ -150,9 +151,9 @@ export async function semanticSearch(
 export async function semanticSearchWithCache(
   query: string,
   cache: DocCache,
-  opts: { k?: number; model?: string } = {}
+  opts: { k?: number; model?: string; profile?: 'fast' | 'quality' } = {}
 ): Promise<SemSearchResult[]> {
-  const embedder = Embedder.get(opts.model || cache.model);
+  const embedder = Embedder.get(opts.model || cache.model, opts.profile);
   const [queryVec] = await embedder.embed([query]);
   const results: SemSearchResult[] = cache.entries.map((entry, i) => ({
     id: entry.id,
