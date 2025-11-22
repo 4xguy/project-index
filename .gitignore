@@ -52,3 +52,11 @@ Desktop.ini
 # Test files
 test-file.ts
 src/test.ts
+
+# Claude Code runtime files
+.claude/build-memory.json
+.claude/metrics.json
+.claude/patterns/
+
+# Serena MCP local state
+.serena/
