@@ -46,3 +46,11 @@ PROJECT-INDEX VALIDATION TODO (as of 2025-11-22T06:49:23Z)
   - Auto-index hook options (postinstall/watch/git hook)  
   - Minimal Jest smoke + parser fixtures  
   - CI for Node 20 with rebuild step
+
+- [ ] Warm server + caching rollout (semantic/perf)
+  - [ ] Add `project-index serve` (HTTP or stdio) that preloads index and embeddings, exposes search/semsearch/deps/impact/suggest.
+  - [ ] Add embedding cache file `.context/.project/PROJECT_INDEX.vectors.jsonl`; regenerate deltas only for changed files.
+  - [ ] Add CLI auto-forward to server if running; fallback to current behavior if not.
+  - [ ] Add `--trace-timings` to log per-command durations (cold vs warm).
+  - [ ] Benchmark p50/p95/p99 for search/semsearch/suggest before & after; record in repo.
+  - [ ] Decision gate: if warm p99 > target (e.g., 80–100 ms) and CPU-bound, prototype native sidecar (Go/Rust) for embeddings+ANN; otherwise skip.

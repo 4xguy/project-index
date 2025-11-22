@@ -12,6 +12,7 @@
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
     "start": "node dist/cli.js",
+    "serve": "node dist/server.js",
     "mcp-server": "node dist/mcp-server.js",
     "mcp-dev": "ts-node src/mcp-server.ts",
     "watch": "tsc --watch",

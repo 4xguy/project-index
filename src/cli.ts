@@ -1,35 +1,31 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
 import { ProjectIndexer } from './core/indexer';
 import { IndexWatcher } from './core/watcher';
-import { IndexerConfig, SymbolKind } from './types';
+import { SymbolKind } from './types';
+import { createConfig } from './util/config';
 
 const program = new Command();
+const DEFAULT_SERVER = process.env.PROJECT_INDEX_SERVER || 'http://127.0.0.1:4545';
 
-// Default configuration
-function createConfig(projectPath: string): IndexerConfig {
-  return {
-    projectRoot: resolve(projectPath),
-    indexFile: '.context/.project/PROJECT_INDEX.json',
-    excludePatterns: [
-      'node_modules/**',
-      '.git/**',
-      'dist/**',
-      'build/**',
-      'coverage/**',
-      '**/*.test.{ts,tsx,js,jsx}',
-      '**/*.spec.{ts,tsx,js,jsx}',
-      '.next/**',
-      '.cache/**',
-      'out/**'
-    ],
-    includePatterns: ['**/*.{ts,tsx,js,jsx,py,go,java,cs,rs}'],
-    maxFileSize: 1024 * 1024, // 1MB
-    languages: ['typescript', 'javascript', 'python', 'go', 'java', 'csharp', 'rust']
-  };
+async function callServer(path: string, body: any) {
+  const fetchFn = (globalThis as any).fetch;
+  if (!fetchFn) return null;
+  const url = `${DEFAULT_SERVER}${path}`;
+  try {
+    const resp = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
 }
 
 program
@@ -213,7 +209,22 @@ program
   .argument('[path]', 'Project path', '.')
   .option('-e, --exact', 'Exact match only')
   .option('--json', 'Output as JSON for agent consumption')
-  .action((query: string, projectPath: string, options) => {
+  .action(async (query: string, projectPath: string, options) => {
+    // Try server first
+    const serverResp = await callServer('/search', { query, exact: options.exact });
+    if (serverResp) {
+      if (options.json) {
+        console.log(JSON.stringify({ query, results: serverResp.results }, null, 2));
+      } else {
+        const results = serverResp.results || [];
+        console.log(`🔍 Searching for: "${query}"\n`);
+        if (!results.length) return console.log('❌ No symbols found');
+        console.log(`✅ Found ${results.length} symbols:\n`);
+        results.forEach((item: any) => console.log(`   ${item.symbol} → ${item.location}`));
+      }
+      return;
+    }
+
     const config = createConfig(projectPath);
     const indexer = new ProjectIndexer(config);
     const index = indexer.loadIndex();
@@ -265,6 +276,30 @@ program
   .option('--model <name>', 'embedding model (default intfloat/e5-small-v2)')
   .option('--json', 'Output as JSON')
   .action(async (query: string, projectPath: string, options) => {
+    const serverResp = await callServer('/semsearch', {
+      query,
+      k: options.k,
+      model: options.model,
+    });
+    if (serverResp) {
+      const results = serverResp.results || [];
+      if (options.json) {
+        console.log(JSON.stringify({ query, results }, null, 2));
+      } else {
+        if (!results.length) {
+          console.log('❌ No results found.');
+          return;
+        }
+        console.log(`🔍 Semantic matches for "${query}"\n`);
+        results.forEach((r: any, idx: number) => {
+          const line = r.line ? `:${r.line}` : '';
+          console.log(`${idx + 1}. ${r.file}${line}  (score ${r.score.toFixed(3)})`);
+          console.log(`   ${r.id}`);
+        });
+      }
+      return;
+    }
+
     const config = createConfig(projectPath);
     const indexPath = join(config.projectRoot, config.indexFile);
     if (!existsSync(indexPath)) {

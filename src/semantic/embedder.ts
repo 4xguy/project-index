@@ -14,6 +14,9 @@ export class Embedder {
   private static instance: Embedder;
   private pipe?: EmbeddingPipeline;
   private model: string;
+  get modelName() {
+    return this.model;
+  }
 
   private constructor(model?: string) {
     // Xenova namespace hosts onnx-converted models; default to a small, widely cached model.
