@@ -8,6 +8,11 @@ project-index status              # Show index status and statistics
 project-index search <query>      # Search for symbols/files
 project-index search -e "exact"   # Exact match search
 project-index index               # Rebuild full index (force reindex)
+project-index deps <file>         # Show dependency relationships for a file
+project-index impact <file>       # Analyze change impact for a file
+project-index suggest <context>   # Agent-friendly context suggestions
+project-index calls <symbol>      # Outgoing call graph for a symbol
+project-index called-by <symbol>  # Incoming call graph for a symbol
 ```
 
 ### Search Options
@@ -183,4 +188,44 @@ project-index search "__init__"        # Find constructors
 
 ---
 
-**Note**: This is v1.2.0 - Advanced features (`deps`, `impact`, `suggest`) coming in future versions.
+## Environment Quick Start (v1.2.0)
+
+- Node: use `nvm use 20` (pinned via `.nvmrc`)
+- Toolchain: `build-essential`, `python3`, `pkg-config`
+- Install: `npm install --legacy-peer-deps`
+- Rebuild natives after install:  
+  `npm rebuild tree-sitter tree-sitter-go tree-sitter-rust --build-from-source`
+
+**Note**: Advanced commands (`deps`, `impact`, `suggest`, `calls`, `called-by`, `call-chain`, `dead-code`) are available now in v1.2.0.
+
+## Common Workflows
+
+- **Fresh setup + index**  
+  ```bash
+  nvm use 20
+  npm install --legacy-peer-deps
+  npm run build
+  project-index index .
+  ```
+
+- **Find impact of a change**  
+  ```bash
+  project-index impact src/core/indexer.ts
+  ```
+
+- **Dependency check for a file**  
+  ```bash
+  project-index deps src/core/indexer.ts
+  ```
+
+- **Call graph hop**  
+  ```bash
+  project-index calls ProjectIndexer.indexProject
+  project-index called-by ProjectIndexer.indexProject
+  project-index call-chain A B
+  ```
+
+- **Quick symbol search (JSON for tooling)**  
+  ```bash
+  project-index search --json "ProjectIndexer"
+  ```

@@ -41,3 +41,8 @@ PROJECT-INDEX VALIDATION TODO (as of 2025-11-22T06:49:23Z)
 
 - [x] Document env prerequisites to prevent future drift  
   Updated `README.md` with Node 20 + build tools + install/rebuild steps.
+
+- [ ] Execute improvement plan (see PROJECT_INDEX_IMPROVEMENT_PLAN.md)  
+  - Auto-index hook options (postinstall/watch/git hook)  
+  - Minimal Jest smoke + parser fixtures  
+  - CI for Node 20 with rebuild step
