@@ -10,17 +10,22 @@ import { createConfig } from './util/config';
 
 const program = new Command();
 const DEFAULT_SERVER = process.env.PROJECT_INDEX_SERVER || 'http://127.0.0.1:4545';
+const TRACE = !!process.env.PROJECT_INDEX_TRACE;
 
 async function callServer(path: string, body: any) {
   const fetchFn = (globalThis as any).fetch;
   if (!fetchFn) return null;
   const url = `${DEFAULT_SERVER}${path}`;
+  const t0 = TRACE ? performance.now() : 0;
   try {
     const resp = await fetchFn(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+    if (TRACE) {
+      console.error(`[trace] server ${path} ${resp.status} ${(performance.now() - t0).toFixed(1)}ms`);
+    }
     if (!resp.ok) return null;
     return await resp.json();
   } catch {

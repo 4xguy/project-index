@@ -6,6 +6,7 @@ import { createConfig } from './util/config';
 
 const PORT = Number(process.env.PROJECT_INDEX_PORT || 4545);
 const HOST = process.env.PROJECT_INDEX_HOST || '127.0.0.1';
+const TRACE = !!process.env.PROJECT_INDEX_TRACE;
 
 interface ServerState {
   indexer: ProjectIndexer;
@@ -86,11 +87,23 @@ function start() {
         // ignore
       }
 
-      if (url === '/search' && method === 'POST') return handleSearch(state, req, res, body);
-      if (url === '/semsearch' && method === 'POST') return handleSemSearch(state, req, res, body);
-      if (url === '/reload' && method === 'POST') return handleReload(state, res);
+      const start = TRACE ? performance.now() : 0;
 
-      send(res, 404, { error: 'not found' });
+      if (url === '/search' && method === 'POST') {
+        await handleSearch(state, req, res, body);
+      } else if (url === '/semsearch' && method === 'POST') {
+        await handleSemSearch(state, req, res, body);
+      } else if (url === '/reload' && method === 'POST') {
+        await handleReload(state, res);
+      } else {
+        send(res, 404, { error: 'not found' });
+      }
+
+      if (TRACE) {
+        const dur = performance.now() - start;
+        console.error(`[trace] ${method} ${url} ${dur.toFixed(1)}ms`);
+      }
+
     });
   });
 
