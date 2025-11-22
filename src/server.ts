@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'http';
 import { ProjectIndexer } from './core/indexer';
-import { semanticSearchWithCache, buildDocCache, DocCache } from './semantic/semsearch';
+import { semanticSearchWithCache, buildDocCache, DocCache, readCache, writeCache } from './semantic/semsearch';
 import { createConfig } from './util/config';
 
 const PORT = Number(process.env.PROJECT_INDEX_PORT || 4545);
@@ -23,7 +23,13 @@ async function ensureCache(state: ServerState) {
   if (state.cache) return state.cache;
   const index = state.indexer.loadIndex();
   if (!index) throw new Error('Index not found; run project-index index');
+  const disk = readCache(state.projectRoot);
+  if (disk) {
+    state.cache = disk;
+    return disk;
+  }
   state.cache = await buildDocCache(index, state.projectRoot);
+  writeCache(state.projectRoot, state.cache);
   return state.cache;
 }
 
@@ -53,8 +59,9 @@ async function handleSemSearch(state: ServerState, req: any, res: http.ServerRes
 async function handleReload(state: ServerState, res: http.ServerResponse) {
   const index = await state.indexer.indexProject();
   state.indexer.saveIndex(index);
-  state.cache = null;
-  send(res, 200, { status: 'reloaded', files: Object.keys(index.files).length });
+  state.cache = await buildDocCache(index, state.projectRoot);
+  writeCache(state.projectRoot, state.cache);
+  send(res, 200, { status: 'reloaded', files: Object.keys(index.files).length, vectors: state.cache.entries.length });
 }
 
 function start() {

@@ -84,7 +84,12 @@ export function readCache(projectRoot: string): DocCache | null {
   return { entries, vectors, model: header.model || 'unknown' };
 }
 
-export async function buildDocCache(index: ProjectIndex, projectRoot: string, model?: string): Promise<DocCache> {
+export async function buildDocCache(
+  index: ProjectIndex,
+  projectRoot: string,
+  model?: string,
+  reuse?: DocCache
+): Promise<DocCache> {
   const embedder = Embedder.get(model);
   const entries: DocEntry[] = Object.entries(index.symbolIndex || {}).map(([sym, loc]) => {
     const [file, lineStr] = loc.split(':');
@@ -96,8 +101,18 @@ export async function buildDocCache(index: ProjectIndex, projectRoot: string, mo
       text: toText(sym, loc),
     };
   });
-  const docs = entries.map((e) => e.text);
-  const vectors = await embedder.embed(docs);
+
+  const vectors: Float32Array[] = [];
+  const texts = entries.map((e) => e.text);
+
+  // Simple reuse: if sizes match and model matches, reuse existing vectors.
+  if (reuse && reuse.model === embedder.modelName && reuse.entries.length === entries.length) {
+    return reuse;
+  }
+
+  const embedded = await embedder.embed(texts);
+  for (const v of embedded) vectors.push(v);
+
   return { entries, vectors, model: embedder.modelName };
 }
 
