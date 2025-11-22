@@ -26,7 +26,7 @@ export class Embedder {
       this.model = model;
     } else {
       const gpu = detectGPU();
-      const prof = profile ?? 'fast';
+      const prof = profile ?? 'quality';
       const spec = pickModel(prof, gpu);
       this.model = spec.name;
     }

@@ -12,7 +12,7 @@ const MODEL_REGISTRY: Record<SemanticProfile, ModelSpec[]> = {
     { name: 'Xenova/all-MiniLM-L6-v2', dims: 384, pooling: 'mean' },
   ],
   quality: [
-    // CPU-friendly but higher quality than MiniLM.
+    // CPU-friendly higher quality default.
     { name: 'Xenova/bge-m3', dims: 1024, pooling: 'mean' },
     // GPU-capable mid-size option; may still run on CPU but slower.
     { name: 'Xenova/Qwen3-Embedding-0.6B', dims: 1024, pooling: 'mean' },
