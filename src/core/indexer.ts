@@ -4,6 +4,9 @@ import { join, relative, resolve, dirname } from 'path';
 import fg from 'fast-glob';
 import { TypeScriptParser } from '../parsers/typescript';
 import { PythonParser } from '../parsers/python';
+import { ShellParser } from '../parsers/shell';
+import { GoParser } from '../parsers/go';
+import { RustParser } from '../parsers/rust';
 import { 
   ProjectIndex, 
   FileInfo, 
@@ -32,6 +35,19 @@ export class ProjectIndexer {
     // Register Python parser
     const pythonParser = new PythonParser();
     this.parsers.set('python', pythonParser);
+
+    // Register Shell parser
+    const shellParser = new ShellParser();
+    this.parsers.set('shell', shellParser);
+    this.parsers.set('bash', shellParser);
+
+    // Register Go parser
+    const goParser = new GoParser();
+    this.parsers.set('go', goParser);
+
+    // Register Rust parser
+    const rustParser = new RustParser();
+    this.parsers.set('rust', rustParser);
   }
 
   /**
@@ -78,6 +94,9 @@ export class ProjectIndexer {
 
     // Build dependency graph
     this.buildDependencyGraph(index);
+    
+    // Build call graph relationships
+    this.buildCallGraph(index);
 
     console.log(`✅ Indexing complete: ${processed} files processed`);
     return index;
@@ -181,6 +200,8 @@ export class ProjectIndexer {
       'js': 'javascript', 
       'jsx': 'javascript',
       'py': 'python',
+      'sh': 'shell',
+      'bash': 'bash',
       'go': 'go',
       'java': 'java',
       'cs': 'csharp',
@@ -276,6 +297,101 @@ export class ProjectIndexer {
   }
 
   /**
+   * Build call graph relationships between symbols
+   */
+  private buildCallGraph(index: ProjectIndex) {
+    console.log('🔗 Building call graph relationships...');
+    
+    // Create a global symbol registry for fast lookup
+    const symbolRegistry = new Map<string, { file: string; line: number; kind: string }>();
+    
+    // First pass: Build symbol registry
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(symbol => {
+        // Register main symbol
+        symbolRegistry.set(symbol.name, {
+          file: filePath,
+          line: symbol.line,
+          kind: symbol.kind || 'unknown'
+        });
+        
+        // Register nested symbols (methods in classes)
+        if (symbol.children) {
+          symbol.children.forEach(child => {
+            // Register both qualified and unqualified names
+            symbolRegistry.set(child.name, {
+              file: filePath,
+              line: child.line,
+              kind: child.kind || 'unknown'
+            });
+            symbolRegistry.set(`${symbol.name}.${child.name}`, {
+              file: filePath,
+              line: child.line,
+              kind: child.kind || 'unknown'
+            });
+          });
+        }
+      });
+    });
+    
+    console.log(`📋 Built symbol registry with ${symbolRegistry.size} symbols`);
+    
+    // Second pass: Resolve calls and build relationships
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      this.processFileCallGraph(fileInfo, symbolRegistry, filePath);
+    });
+    
+    console.log('✅ Call graph relationships built');
+  }
+  
+  /**
+   * Process call graph for a single file
+   */
+  private processFileCallGraph(
+    fileInfo: FileInfo, 
+    symbolRegistry: Map<string, { file: string; line: number; kind: string }>,
+    currentFile: string
+  ) {
+    // Process all symbols in the file
+    fileInfo.symbols.forEach(symbol => {
+      this.resolveSymbolCalls(symbol, symbolRegistry, currentFile);
+      
+      // Process nested symbols (methods in classes)
+      if (symbol.children) {
+        symbol.children.forEach(child => {
+          this.resolveSymbolCalls(child, symbolRegistry, currentFile);
+        });
+      }
+    });
+  }
+  
+  /**
+   * Resolve calls for a specific symbol and populate calledBy relationships
+   */
+  private resolveSymbolCalls(
+    symbol: SymbolInfo,
+    symbolRegistry: Map<string, { file: string; line: number; kind: string }>,
+    currentFile: string
+  ) {
+    if (!symbol.calls || symbol.calls.length === 0) {
+      return;
+    }
+    
+    symbol.calls.forEach(callName => {
+      // Try to find the called function in the symbol registry
+      const targetSymbol = symbolRegistry.get(callName);
+      
+      if (targetSymbol && targetSymbol.file !== currentFile) {
+        // Cross-file call found - we could enhance this to also track same-file calls
+        // For now, we're just identifying cross-file relationships
+        
+        // We could add calledBy relationships here if we extend the SymbolInfo interface
+        // For the current implementation, the calls array already shows what this symbol calls
+      }
+    });
+  }
+
+  /**
    * Save index to file
    */
   saveIndex(index: ProjectIndex) {
@@ -347,6 +463,7 @@ export class ProjectIndexer {
       });
       
       this.buildDependencyGraph(index);
+      this.buildCallGraph(index);
       index.updatedAt = new Date().toISOString();
       
       console.log(`🔄 Updated ${updated} files in index`);

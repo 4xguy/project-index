@@ -18,6 +18,8 @@ Project Index creates a **minimal, always-updated summary** of your entire codeb
 - ⚛️ **React components** with hooks and props (v1.1)
 - 🌐 **API endpoints** with routes and middleware (v1.1)
 - 🐍 **Python support** with AST parsing (v1.1)
+- 🚀 **Go support** with comprehensive parsing (v1.2)
+- 🦀 **Rust support** with trait and impl detection (v1.2)
 - 🤖 **Agent-optimized intelligence** with smart suggestions (v1.2)
 - 💥 **Change impact analysis** with confidence vectors (v1.2)
 - 🎯 **Context-aware recommendations** for agentic workflows (v1.2)
@@ -194,13 +196,14 @@ your-project/
 
 ### Supported Languages
 
-| Language | Support Level | v1.1 Features | Status |
-|----------|---------------|---------------|--------|
-| **TypeScript/JavaScript** | ✅ Full | React components, API routes, JSX | ✅ **Fixed & Enhanced** |
+| Language | Support Level | Features | Status |
+|----------|---------------|----------|--------|
+| **TypeScript/JavaScript** | ✅ Full | React components, API routes, JSX | ✅ **Enhanced** |
 | **TSX/JSX** | ✅ Full | forwardRef, memo, HOCs, hooks, props | ✅ **All Patterns** |  
 | **Python** | ✅ Enhanced | AST parsing, classes, methods, imports/exports | ✅ **Fixed Parsing** |
-| **Go** | ✅ Basic | Functions, structs, packages | ⚠️ **Working** |
-| **Java, C#, Rust** | ⏳ Coming | Planned for v1.2 | 📅 **Planned** |
+| **Go** | ✅ Full | Functions, structs, interfaces, methods, exports | ✅ **v1.2 Complete** |
+| **Rust** | ✅ Full | Structs, enums, traits, impl blocks, modules | ✅ **v1.2 Complete** |
+| **Shell/Bash** | ✅ Basic | Functions, commands, scripts | ✅ **Working** |
 
 ### v1.1 Enhanced Detection
 

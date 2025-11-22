@@ -5,7 +5,7 @@ import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { ProjectIndexer } from './core/indexer';
 import { IndexWatcher } from './core/watcher';
-import { IndexerConfig } from './types';
+import { IndexerConfig, SymbolKind } from './types';
 
 const program = new Command();
 
@@ -566,6 +566,339 @@ program
       
       const total = highImpact.length + mediumImpact.length + lowImpact.length;
       console.log(`📊 Total affected: ${total} files`);
+    }
+  });
+
+program
+  .command('calls')
+  .description('Show functions that this symbol calls')
+  .argument('<symbol>', 'Symbol name to analyze')
+  .argument('[path]', 'Project path', '.')
+  .option('--json', 'Output as JSON for agent consumption')
+  .action((symbol: string, projectPath: string, options) => {
+    const config = createConfig(projectPath);
+    const indexer = new ProjectIndexer(config);
+    const index = indexer.loadIndex();
+    
+    if (!index) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'No index found' }));
+      } else {
+        console.log('❌ No index file found. Run "project-index index" first.');
+      }
+      return;
+    }
+
+    // Find the symbol in the index
+    let foundSymbol: any = null;
+    let foundFile: string = '';
+    
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(sym => {
+        if (sym.name === symbol) {
+          foundSymbol = sym;
+          foundFile = filePath;
+        }
+        // Check nested symbols (methods in classes)
+        if (sym.children) {
+          sym.children.forEach(child => {
+            if (child.name === symbol || `${sym.name}.${child.name}` === symbol) {
+              foundSymbol = child;
+              foundFile = filePath;
+            }
+          });
+        }
+      });
+    });
+
+    if (!foundSymbol) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'Symbol not found', symbol }));
+      } else {
+        console.log(`❌ Symbol '${symbol}' not found in index`);
+      }
+      return;
+    }
+
+    const calls = foundSymbol.calls || [];
+    
+    if (options.json) {
+      console.log(JSON.stringify({
+        symbol,
+        file: foundFile,
+        line: foundSymbol.line,
+        calls,
+        count: calls.length
+      }, null, 2));
+    } else {
+      console.log(`📞 Functions called by '${symbol}' (${calls.length}):\n`);
+      if (calls.length === 0) {
+        console.log('   No function calls found');
+      } else {
+        calls.forEach((call: string) => console.log(`   ${call}`));
+      }
+    }
+  });
+
+program
+  .command('called-by')
+  .description('Show functions that call this symbol')
+  .argument('<symbol>', 'Symbol name to analyze')
+  .argument('[path]', 'Project path', '.')
+  .option('--json', 'Output as JSON for agent consumption')
+  .action((symbol: string, projectPath: string, options) => {
+    const config = createConfig(projectPath);
+    const indexer = new ProjectIndexer(config);
+    const index = indexer.loadIndex();
+    
+    if (!index) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'No index found' }));
+      } else {
+        console.log('❌ No index file found. Run "project-index index" first.');
+      }
+      return;
+    }
+
+    // Find all symbols that call the target symbol
+    const callers: Array<{ symbol: string; file: string; line: number }> = [];
+    
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(sym => {
+        if (sym.calls?.includes(symbol)) {
+          callers.push({ symbol: sym.name, file: filePath, line: sym.line });
+        }
+        // Check nested symbols (methods in classes)
+        if (sym.children) {
+          sym.children.forEach(child => {
+            if (child.calls?.includes(symbol)) {
+              callers.push({ 
+                symbol: `${sym.name}.${child.name}`, 
+                file: filePath, 
+                line: child.line 
+              });
+            }
+          });
+        }
+      });
+    });
+
+    if (options.json) {
+      console.log(JSON.stringify({
+        symbol,
+        callers,
+        count: callers.length
+      }, null, 2));
+    } else {
+      console.log(`📞 Functions that call '${symbol}' (${callers.length}):\n`);
+      if (callers.length === 0) {
+        console.log('   No callers found');
+      } else {
+        callers.forEach(caller => {
+          console.log(`   ${caller.symbol} → ${caller.file}:${caller.line}`);
+        });
+      }
+    }
+  });
+
+program
+  .command('call-chain')
+  .description('Show call chain from one symbol to another')
+  .argument('<from>', 'Source symbol name')
+  .argument('<to>', 'Target symbol name')
+  .argument('[path]', 'Project path', '.')
+  .option('--json', 'Output as JSON for agent consumption')
+  .option('--depth <number>', 'Maximum search depth', '5')
+  .action((from: string, to: string, projectPath: string, options) => {
+    const config = createConfig(projectPath);
+    const indexer = new ProjectIndexer(config);
+    const index = indexer.loadIndex();
+    
+    if (!index) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'No index found' }));
+      } else {
+        console.log('❌ No index file found. Run "project-index index" first.');
+      }
+      return;
+    }
+
+    const maxDepth = parseInt(options.depth) || 5;
+    
+    // Build a call graph for path finding
+    const callGraph = new Map<string, string[]>();
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(sym => {
+        if (sym.calls) {
+          callGraph.set(sym.name, sym.calls);
+        }
+        if (sym.children) {
+          sym.children.forEach(child => {
+            if (child.calls) {
+              callGraph.set(`${sym.name}.${child.name}`, child.calls);
+            }
+          });
+        }
+      });
+    });
+
+    // Find path using BFS
+    const findPath = (start: string, end: string): string[] | null => {
+      const queue: Array<{ node: string; path: string[] }> = [{ node: start, path: [start] }];
+      const visited = new Set<string>();
+      
+      while (queue.length > 0) {
+        const { node, path } = queue.shift()!;
+        
+        if (node === end) {
+          return path;
+        }
+        
+        if (visited.has(node) || path.length > maxDepth) {
+          continue;
+        }
+        
+        visited.add(node);
+        const calls = callGraph.get(node) || [];
+        
+        for (const call of calls) {
+          if (!visited.has(call)) {
+            queue.push({ node: call, path: [...path, call] });
+          }
+        }
+      }
+      
+      return null;
+    };
+
+    const path = findPath(from, to);
+
+    if (options.json) {
+      console.log(JSON.stringify({
+        from,
+        to,
+        path,
+        found: !!path,
+        depth: path ? path.length - 1 : 0
+      }, null, 2));
+    } else {
+      if (path) {
+        console.log(`🔗 Call chain from '${from}' to '${to}':\n`);
+        path.forEach((symbol, index) => {
+          if (index === 0) {
+            console.log(`   ${symbol} (start)`);
+          } else if (index === path.length - 1) {
+            console.log(`   └─ ${symbol} (target)`);
+          } else {
+            console.log(`   └─ ${symbol}`);
+          }
+        });
+      } else {
+        console.log(`❌ No call chain found from '${from}' to '${to}' within depth ${maxDepth}`);
+      }
+    }
+  });
+
+program
+  .command('dead-code')
+  .description('Find potentially dead code (unused functions)')
+  .argument('[path]', 'Project path', '.')
+  .option('--json', 'Output as JSON for agent consumption')
+  .option('--include-private', 'Include private functions (starting with _)')
+  .action((projectPath: string, options) => {
+    const config = createConfig(projectPath);
+    const indexer = new ProjectIndexer(config);
+    const index = indexer.loadIndex();
+    
+    if (!index) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: 'No index found' }));
+      } else {
+        console.log('❌ No index file found. Run "project-index index" first.');
+      }
+      return;
+    }
+
+    // Collect all function/method names
+    const allFunctions = new Set<string>();
+    const functionLocations = new Map<string, { file: string; line: number }>();
+    
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(sym => {
+        if (sym.kind === SymbolKind.Function || sym.kind === SymbolKind.Method) {
+          // Skip private functions unless requested
+          if (!options.includePrivate && sym.name.startsWith('_')) {
+            return;
+          }
+          
+          allFunctions.add(sym.name);
+          functionLocations.set(sym.name, { file: filePath, line: sym.line });
+        }
+        
+        if (sym.children) {
+          sym.children.forEach(child => {
+            if (child.kind === SymbolKind.Method) {
+              const fullName = `${sym.name}.${child.name}`;
+              if (!options.includePrivate && child.name.startsWith('_')) {
+                return;
+              }
+              
+              allFunctions.add(child.name);
+              allFunctions.add(fullName);
+              functionLocations.set(child.name, { file: filePath, line: child.line });
+              functionLocations.set(fullName, { file: filePath, line: child.line });
+            }
+          });
+        }
+      });
+    });
+
+    // Collect all function calls
+    const calledFunctions = new Set<string>();
+    Object.entries(index.files).forEach(([filePath, fileInfo]) => {
+      fileInfo.symbols.forEach(sym => {
+        if (sym.calls) {
+          sym.calls.forEach(call => calledFunctions.add(call));
+        }
+        if (sym.children) {
+          sym.children.forEach(child => {
+            if (child.calls) {
+              child.calls.forEach(call => calledFunctions.add(call));
+            }
+          });
+        }
+      });
+    });
+
+    // Find uncalled functions
+    const deadFunctions = Array.from(allFunctions).filter(func => !calledFunctions.has(func));
+    const deadFunctionDetails = deadFunctions.map(func => ({
+      name: func,
+      location: functionLocations.get(func) || { file: 'unknown', line: 0 }
+    }));
+
+    if (options.json) {
+      console.log(JSON.stringify({
+        deadFunctions: deadFunctionDetails,
+        count: deadFunctions.length,
+        totalFunctions: allFunctions.size,
+        analysis: {
+          includePrivate: !!options.includePrivate
+        }
+      }, null, 2));
+    } else {
+      console.log(`💀 Potentially dead functions (${deadFunctions.length}/${allFunctions.size}):\n`);
+      if (deadFunctions.length === 0) {
+        console.log('   No dead functions found');
+      } else {
+        deadFunctionDetails.forEach(func => {
+          console.log(`   ${func.name} → ${func.location.file}:${func.location.line}`);
+        });
+      }
+      
+      if (!options.includePrivate) {
+        console.log('\n💡 Use --include-private to include private functions');
+      }
     }
   });
 

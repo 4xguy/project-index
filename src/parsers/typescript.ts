@@ -220,6 +220,7 @@ export class TypeScriptParser {
     sourceFile.getFunctions().forEach(func => {
       const signature = this.getFunctionSignature(func);
       const docString = this.getDocString(func);
+      const calls = this.extractCalls(func);
       
       symbols.push({
         name: func.getName() || 'anonymous',
@@ -229,7 +230,8 @@ export class TypeScriptParser {
         endLine: func.getEndLineNumber(),
         endColumn: 0,
         signature,
-        docstring: docString
+        docstring: docString,
+        calls: calls
       });
     });
 
@@ -251,6 +253,7 @@ export class TypeScriptParser {
       cls.getMethods().forEach(method => {
         const methodSignature = this.getMethodSignature(method);
         const methodDoc = this.getDocString(method);
+        const methodCalls = this.extractCalls(method);
         
         classSymbol.children!.push({
           name: method.getName(),
@@ -261,7 +264,8 @@ export class TypeScriptParser {
           endColumn: 0,
           signature: methodSignature,
           docstring: methodDoc,
-          parent: classSymbol.name
+          parent: classSymbol.name,
+          calls: methodCalls
         });
       });
 
@@ -283,6 +287,7 @@ export class TypeScriptParser {
       cls.getConstructors().forEach(ctor => {
         const ctorSignature = this.getConstructorSignature(ctor);
         const ctorDoc = this.getDocString(ctor);
+        const ctorCalls = this.extractCalls(ctor);
         
         classSymbol.children!.push({
           name: 'constructor',
@@ -291,7 +296,8 @@ export class TypeScriptParser {
           column: 0,
           signature: ctorSignature,
           docstring: ctorDoc,
-          parent: classSymbol.name
+          parent: classSymbol.name,
+          calls: ctorCalls
         });
       });
 
@@ -410,44 +416,45 @@ export class TypeScriptParser {
       const firstImport = imports[0];
       const lastImport = imports[imports.length - 1];
       outline.push({
-        type: 'import',
-        lines: [firstImport.getStartLineNumber(), lastImport.getEndLineNumber()]
+        title: 'Imports',
+        level: 1,
+        line: firstImport.getStartLineNumber()
       });
     }
 
     // Functions
     sourceFile.getFunctions().forEach(func => {
       outline.push({
-        type: 'function',
-        name: func.getName(),
-        lines: [func.getStartLineNumber(), func.getEndLineNumber()]
+        title: `Function: ${func.getName()}`,
+        level: 1,
+        line: func.getStartLineNumber()
       });
     });
 
     // Classes
     sourceFile.getClasses().forEach(cls => {
       outline.push({
-        type: 'class',
-        name: cls.getName(),
-        lines: [cls.getStartLineNumber(), cls.getEndLineNumber()]
+        title: `Class: ${cls.getName()}`,
+        level: 1,
+        line: cls.getStartLineNumber()
       });
     });
 
     // Interfaces
     sourceFile.getInterfaces().forEach(iface => {
       outline.push({
-        type: 'interface',
-        name: iface.getName(),
-        lines: [iface.getStartLineNumber(), iface.getEndLineNumber()]
+        title: `Interface: ${iface.getName()}`,
+        level: 1,
+        line: iface.getStartLineNumber()
       });
     });
 
     // Type aliases
     sourceFile.getTypeAliases().forEach(typeAlias => {
       outline.push({
-        type: 'type',
-        name: typeAlias.getName(),
-        lines: [typeAlias.getStartLineNumber(), typeAlias.getEndLineNumber()]
+        title: `Type: ${typeAlias.getName()}`,
+        level: 1,
+        line: typeAlias.getStartLineNumber()
       });
     });
 
@@ -457,12 +464,75 @@ export class TypeScriptParser {
       const firstExport = exports[0];
       const lastExport = exports[exports.length - 1];
       outline.push({
-        type: 'export',
-        lines: [firstExport.getStartLineNumber(), lastExport.getEndLineNumber()]
+        title: 'Exports',
+        level: 1,
+        line: firstExport.getStartLineNumber()
       });
     }
 
-    return outline.sort((a, b) => a.lines[0] - b.lines[0]);
+    return outline.sort((a, b) => a.line - b.line);
+  }
+
+  /**
+   * Extract function calls from a function or method body
+   */
+  private extractCalls(node: any): string[] {
+    console.log('extractCalls called for node:', node.getName?.() || 'unknown');
+    const calls = new Set<string>();
+    
+    try {
+      // Walk through the AST to find call expressions
+      node.forEachDescendant((child: any) => {
+      if (child.getKind() === SyntaxKind.CallExpression) {
+        const expression = child.getExpression();
+        
+        // Direct function calls: functionName()
+        if (expression.getKind() === SyntaxKind.Identifier) {
+          calls.add(expression.getText());
+        }
+        // Method calls: obj.method() or this.method()
+        else if (expression.getKind() === SyntaxKind.PropertyAccessExpression) {
+          const propertyAccess = expression;
+          const methodName = propertyAccess.getName();
+          const objectName = propertyAccess.getExpression().getText();
+          
+          // Add both qualified and unqualified method names
+          calls.add(methodName);
+          if (objectName !== 'this') {
+            calls.add(`${objectName}.${methodName}`);
+          }
+        }
+        // Constructor calls: new ClassName()
+        else if (child.getExpression().getKind() === SyntaxKind.NewExpression) {
+          const newExpression = child.getExpression();
+          const className = newExpression.getExpression()?.getText();
+          if (className) {
+            calls.add(className);
+          }
+        }
+      }
+      
+      // Await expressions: await functionName()
+      if (child.getKind() === SyntaxKind.AwaitExpression) {
+        const awaitExpression = child.getExpression();
+        if (awaitExpression?.getKind() === SyntaxKind.CallExpression) {
+          const callExpr = awaitExpression.getExpression();
+          if (callExpr?.getKind() === SyntaxKind.Identifier) {
+            calls.add(callExpr.getText());
+          }
+        }
+      }
+      });
+    } catch (error) {
+      console.warn('Error in extractCalls:', error);
+      return [];
+    }
+    
+    const result = Array.from(calls).sort();
+    if (result.length > 0) {
+      console.log(`Found ${result.length} calls:`, result);
+    }
+    return result;
   }
 
   private getFunctionSignature(func: any): string {

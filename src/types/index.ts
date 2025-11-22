@@ -47,6 +47,8 @@ export interface SymbolInfo {
   docstring?: string;
   children?: SymbolInfo[];
   parent?: string;
+  calls?: string[];      // Functions this symbol calls
+  calledBy?: string[];   // Functions that call this symbol
 }
 
 export enum SymbolKind {
@@ -86,9 +88,10 @@ export enum SymbolKind {
 }
 
 export interface OutlineSection {
-  type: 'import' | 'export' | 'class' | 'function' | 'interface' | 'type' | 'variable';
-  name?: string;
-  lines: [number, number]; // [start, end]
+  title: string;
+  level: number;
+  line: number;
+  children?: OutlineSection[];
 }
 
 export interface DependencyInfo {

@@ -5,12 +5,15 @@
   "main": "dist/index.js",
   "bin": {
     "project-index": "dist/cli.js",
-    "project-index-init": "scripts/init-project.js"
+    "project-index-init": "scripts/init-project.js",
+    "project-index-mcp": "dist/mcp-server.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
     "start": "node dist/cli.js",
+    "mcp-server": "node dist/mcp-server.js",
+    "mcp-dev": "ts-node src/mcp-server.ts",
     "watch": "tsc --watch",
     "test": "jest",
     "prepublishOnly": "npm run build && npm test"
@@ -23,7 +26,13 @@
     "react-components",
     "api-endpoints",
     "python-parser",
-    "typescript-parser"
+    "typescript-parser",
+    "go-parser",
+    "rust-parser",
+    "tree-sitter",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol"
   ],
   "author": "4xguy <keithrivas@gmail.com>",
   "license": "MIT",
@@ -43,6 +52,9 @@
     "fast-glob": "^3.3.2",
     "pyparser": "^0.0.8",
     "python-ast": "^0.1.0",
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-go": "^0.23.4",
+    "tree-sitter-rust": "^0.24.0",
     "ts-morph": "^21.0.1"
   },
   "devDependencies": {

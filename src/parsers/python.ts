@@ -124,13 +124,15 @@ export class PythonParser {
     this.walkAST(ast, (node) => {
       const nodeType = node._type || node.type || node.kind || '';
       if (nodeType === 'FunctionDef' || nodeType === 'AsyncFunctionDef') {
+        const calls = this.extractCalls(node);
         symbols.push({
           name: node.name || 'unknown',
           kind: SymbolKind.Function,
           line: node.lineno || 0,
           column: node.col_offset || 0,
           signature: this.buildFunctionSignature(node),
-          docstring: this.extractDocstring(node)
+          docstring: this.extractDocstring(node),
+          calls: calls
         });
       } else if (nodeType === 'ClassDef') {
         const classSymbol: SymbolInfo = {
@@ -148,6 +150,7 @@ export class PythonParser {
           node.body.forEach((bodyNode: any) => {
             const bodyNodeType = bodyNode._type || bodyNode.type || bodyNode.kind || '';
             if (bodyNodeType === 'FunctionDef' || bodyNodeType === 'AsyncFunctionDef') {
+              const methodCalls = this.extractCalls(bodyNode);
               classSymbol.children?.push({
                 name: bodyNode.name || 'unknown',
                 kind: SymbolKind.Method,
@@ -155,7 +158,8 @@ export class PythonParser {
                 column: bodyNode.col_offset || 0,
                 signature: this.buildFunctionSignature(bodyNode),
                 docstring: this.extractDocstring(bodyNode),
-                parent: node.name
+                parent: node.name,
+                calls: methodCalls
               });
             }
           });
@@ -192,20 +196,21 @@ export class PythonParser {
 
       if (nodeType === 'Import' || nodeType === 'ImportFrom') {
         outline.push({
-          type: 'import',
-          lines: [startLine, endLine]
+          title: 'Imports',
+          level: 1,
+          line: startLine
         });
       } else if (nodeType === 'FunctionDef' || nodeType === 'AsyncFunctionDef') {
         outline.push({
-          type: 'function',
-          name: node.name,
-          lines: [startLine, endLine]
+          title: `Function: ${node.name}`,
+          level: 1,
+          line: startLine
         });
       } else if (nodeType === 'ClassDef') {
         outline.push({
-          type: 'class',
-          name: node.name,
-          lines: [startLine, endLine]
+          title: `Class: ${node.name}`,
+          level: 1,
+          line: startLine
         });
       }
     });
@@ -275,6 +280,53 @@ export class PythonParser {
       }
     }
     return maxLine;
+  }
+
+  /**
+   * Extract function calls from a function/method AST node
+   */
+  private extractCalls(functionNode: any): string[] {
+    const calls = new Set<string>();
+    
+    // Walk through the function body to find call expressions
+    this.walkAST(functionNode, (node) => {
+      const nodeType = node._type || node.type || node.kind || '';
+      
+      if (nodeType === 'Call') {
+        // Direct function calls: function_name()
+        if (node.func) {
+          const funcType = node.func._type || node.func.type || node.func.kind || '';
+          
+          if (funcType === 'Name' && node.func.id) {
+            // Simple function call: func()
+            calls.add(node.func.id);
+          } else if (funcType === 'Attribute' && node.func.attr) {
+            // Method call: obj.method() or module.function()
+            const methodName = node.func.attr;
+            calls.add(methodName);
+            
+            // If it's a qualified call, also add the full name
+            if (node.func.value && node.func.value.id && node.func.value.id !== 'self') {
+              calls.add(`${node.func.value.id}.${methodName}`);
+            }
+          }
+        }
+      }
+      // Await expressions: await function_name()
+      else if (nodeType === 'Await' && node.value) {
+        const awaitType = node.value._type || node.value.type || node.value.kind || '';
+        if (awaitType === 'Call' && node.value.func) {
+          const funcType = node.value.func._type || node.value.func.type || node.value.func.kind || '';
+          if (funcType === 'Name' && node.value.func.id) {
+            calls.add(node.value.func.id);
+          } else if (funcType === 'Attribute' && node.value.func.attr) {
+            calls.add(node.value.func.attr);
+          }
+        }
+      }
+    });
+    
+    return Array.from(calls).sort();
   }
 
   private walkAST(node: any, callback: (node: any) => void) {
