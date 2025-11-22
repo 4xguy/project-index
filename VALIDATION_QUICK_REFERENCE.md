@@ -28,6 +28,13 @@ project-index search       # Symbol search
 project-index suggest      # AI context suggestions
 ```
 
+## Environment Prerequisites (validated 2025-11-22)
+
+- Node: 20.19.5 via `nvm use` (pinned in `.nvmrc`)
+- Native toolchain: `build-essential`, `python3`, `pkg-config`
+- Install: `npm install --legacy-peer-deps`
+- Rebuild natives after install: `npm rebuild tree-sitter tree-sitter-go tree-sitter-rust --build-from-source`
+
 ## Validation Tools Status
 
 | Tool | Command | Status |

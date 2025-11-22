@@ -28,10 +28,17 @@ Project Index creates a **minimal, always-updated summary** of your entire codeb
 
 ## 📋 Requirements
 
-- **Node.js** 16+ (for TypeScript compilation and runtime)
+- **Node.js** 20.x (validated with 20.19.5; `.nvmrc` included)
+- **Build tools**: `build-essential`, `python3`, `pkg-config` (for tree-sitter native builds)
 - **Git** (for cloning the repository)
-- **TypeScript compiler** (automatically installed if missing)
 - **Claude Code** with hooks support
+
+**Install deps (dev):**
+```bash
+nvm use 20
+npm install --legacy-peer-deps
+npm rebuild tree-sitter tree-sitter-go tree-sitter-rust --build-from-source
+```
 
 ## 🚀 Quick Start
 
