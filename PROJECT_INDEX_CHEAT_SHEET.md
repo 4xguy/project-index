@@ -13,6 +13,7 @@ project-index impact <file>       # Analyze change impact for a file
 project-index suggest <context>   # Agent-friendly context suggestions
 project-index calls <symbol>      # Outgoing call graph for a symbol
 project-index called-by <symbol>  # Incoming call graph for a symbol
+project-index semsearch "query"   # Semantic search (embeddings, opt-in)
 ```
 
 ### Search Options

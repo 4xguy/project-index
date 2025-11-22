@@ -257,6 +257,58 @@ program
   });
 
 program
+  .command('semsearch')
+  .description('Semantic search for symbols (embeddings, opt-in)')
+  .argument('<query>', 'Free-text query')
+  .argument('[path]', 'Project path', '.')
+  .option('-k, --k <number>', 'number of results', (v) => parseInt(v, 10))
+  .option('--model <name>', 'embedding model (default intfloat/e5-small-v2)')
+  .option('--json', 'Output as JSON')
+  .action(async (query: string, projectPath: string, options) => {
+    const config = createConfig(projectPath);
+    const indexPath = join(config.projectRoot, config.indexFile);
+    if (!existsSync(indexPath)) {
+      const msg = 'No index file found. Run "project-index index" first.';
+      if (options.json) {
+        console.log(JSON.stringify({ error: msg }));
+      } else {
+        console.error(`❌ ${msg}`);
+      }
+      return;
+    }
+    try {
+      const { semanticSearch } = await import('./semantic/semsearch');
+      const results = await semanticSearch(query, {
+        projectRoot: config.projectRoot,
+        k: options.k,
+        model: options.model,
+      });
+      if (options.json) {
+        console.log(JSON.stringify({ query, results }, null, 2));
+      } else {
+        if (!results.length) {
+          console.log('❌ No results found.');
+          return;
+        }
+        console.log(`🔍 Semantic matches for "${query}"\n`);
+        results.forEach((r, idx) => {
+          const line = r.line ? `:${r.line}` : '';
+          console.log(`${idx + 1}. ${r.file}${line}  (score ${r.score.toFixed(3)})`);
+          console.log(`   ${r.id}`);
+        });
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (options.json) {
+        console.log(JSON.stringify({ error: msg }));
+      } else {
+        console.error('❌ Semantic search failed:', msg);
+      }
+      process.exit(1);
+    }
+  });
+
+program
   .command('suggest')
   .description('Smart context suggestions for agents')
   .argument('<context>', 'Context query (e.g., "auth", "api", "components")')
