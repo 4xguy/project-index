@@ -16,7 +16,8 @@ export class Embedder {
   private model: string;
 
   private constructor(model?: string) {
-    this.model = model ?? 'intfloat/e5-small-v2';
+    // Xenova namespace hosts onnx-converted models; default to a small, widely cached model.
+    this.model = model ?? 'Xenova/all-MiniLM-L6-v2';
     // Disable telemetry/cache downloads to ~/.cache if not writable.
     env.allowRemoteModels = true;
     env.useBrowserCache = false;
@@ -33,12 +34,47 @@ export class Embedder {
 
   async embed(texts: string[]): Promise<Float32Array[]> {
     if (!this.pipe) {
-      const p = (await pipeline('feature-extraction', this.model)) as unknown as EmbeddingPipeline;
+      const p = (await pipeline('feature-extraction', this.model, {
+        pooling: 'mean',
+        normalize: true,
+      } as any)) as unknown as EmbeddingPipeline;
       this.pipe = p;
     }
     const result = await this.pipe(texts);
+    if (!Array.isArray(result.data) && (result as any).dims) {
+      const data = result.data as Float32Array;
+      const dims = (result as any).dims as number[];
+      // Handle [batch, seq, dim] by mean pooling over seq.
+      if (dims.length === 3) {
+        const [batch, seq, dim] = dims;
+        const out: Float32Array[] = [];
+        for (let b = 0; b < batch; b++) {
+          const start = b * seq * dim;
+          const vec = new Float32Array(dim);
+          for (let s = 0; s < seq; s++) {
+            const offset = start + s * dim;
+            for (let d = 0; d < dim; d++) {
+              vec[d] += data[offset + d];
+            }
+          }
+          for (let d = 0; d < dim; d++) vec[d] /= seq;
+          out.push(vec);
+        }
+        return out;
+      }
+      if (dims.length === 2) {
+        const [batch, dim] = dims;
+        const out: Float32Array[] = [];
+        for (let b = 0; b < batch; b++) {
+          const start = b * dim;
+          out.push(data.slice(start, start + dim));
+        }
+        return out;
+      }
+    }
+    // Fallback: assume nested arrays
     const rows = Array.isArray(result.data[0]) ? (result.data as number[][]) : [result.data as number[]];
-    return rows.map((row) => new Float32Array(row));
+    return rows.map((row) => new Float32Array(row as number[]));
   }
 }
 
